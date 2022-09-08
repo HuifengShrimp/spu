@@ -276,13 +276,10 @@ ArrayRef LogRegAA::proc(KernelEvalContext* ctx, const ArrayRef& x, const ArrayRe
 
   std::cout<<"**********reconstruct done************"<<std::endl;
 
-  
-  //lj-todo : select proper c2
-
-  //lj-todo : check inner coefficients 
-
   //Transpose : x_r1^T
-  size_t i = 0, index;
+
+  size_t i = 0, j = 0, index;
+  
   ArrayRef x_r1T(makeType<RingTy>(field), N * M);
   for ( i = 0 ; i < M * N ; i++){
     index = (i % N) * M + (i / N);
@@ -299,23 +296,68 @@ ArrayRef LogRegAA::proc(KernelEvalContext* ctx, const ArrayRef& x, const ArrayRe
     index = (i % N) * M + (i / N);
     r1T.at<int32_t>(index) = r1.at<int32_t>(i);
   }
+  // std::cout<<"Is this kind of assignment true?"<<std::endl;
+  // std::cout<< (r1T.at<int32_t>(M * N / 2) == r1.at<int32_t>(M * N / 2))<<std::endl;
+
+
+
+  
+  //lj-todo : select proper c2
+  //0907_lj : c2_ : r2 · x_r1T · r1  
+
+  std::cout<<"***********start selecting c2***********"<<std::endl;
+  ArrayRef c2_(makeType<RingTy>(field), K * N);
+
+  for (i = 0; i < N; i++) {
+    for(j = 0; j < M * N; j++) {
+      c2_.at<int32_t>(i) = c2_.at<int32_t>(i) + c2.at<int32_t>(j) * x_r1T.at<int32_t>(j);
+    }
+  }
+
+  std::cout<<"**********end selecting c2**************"<<std::endl;
+
+
+  //lj-todo : check inner coefficients 
+
+
 
   // 2 * IDENTITY MATRIX
-  ArrayRef iden2(makeType<RingTy>(field), M) ;
+  ArrayRef iden2(makeType<RingTy>(field), K * M) ;
   std::memset(iden2.data(), 2, iden2.buf()->size());
-
-  // 4 * INDENTITY MATRIX
-  ArrayRef iden4(makeType<RingTy>(field), M) ;
-  std::memset(iden4.data(), 4, iden4.buf()->size());
 
   std::cout<<"**********start ring operations************"<<std::endl;
   std::cout<<"w_r2 : "<<w_r2.numel()<<std::endl;
   std::cout<<"r1T : "<<r1T.numel()<<std::endl;
+  std::cout<<"c2_ : "<<c2_.numel()<<std::endl;
   std::cout<<"K :"<<K<<std::endl;
   std::cout<<"M :"<<M<<std::endl;
   std::cout<<"N :"<<N<<std::endl;
 
-  auto grad = ring_mmul(w_r2, r1T, K, M, N);
+  // auto grad = ring_mmul(w_r2, r1T, K, M, N);
+
+  //0908_lj : 
+  auto tmp = ring_add(ring_add(
+  ring_mmul(y_r3, r1, K, N, M),
+  ring_mmul(r3, x_r1, K, N, M)),
+  c4);
+
+  for(i = 0; i < K * N; i++){
+    tmp.at<int32_t>(i) = 4 * tmp.at<int32_t>(i);
+  }
+
+
+  //0907_lj : 
+  auto grad  = ring_sub(ring_add(ring_add(ring_add(ring_add(ring_add(ring_add(ring_add(
+  ring_mmul(iden2, r1, K, N, M),
+  ring_mmul(ring_mmul(w_r2, r1T, K, M, N), x_r1, K, N, M)),
+  ring_mmul(ring_mmul(r2, x_r1T, K, M, N), x_r1, K, N, M)),
+  ring_mmul(c1, x_r1, K, N, M)),
+  ring_mmul(ring_mmul(w_r2, x_r1T, K, M, N), r1, K, N, M)),
+  ring_mmul(w_r2, c5, K, N, N)),
+  c2_),
+  c3),
+  tmp);
+ 
 
 
 
@@ -339,14 +381,19 @@ ArrayRef LogRegAA::proc(KernelEvalContext* ctx, const ArrayRef& x, const ArrayRe
   std::cout<<"grad :"<<grad.numel()<<std::endl;
   std::cout<<"**********end ring operations************"<<std::endl;
 
-  // if (comm->getRank() == 1) {
-  //   auto tmp1 = ring_mmul(ring_mmul(w_r2, x_r1T, 1, M, N), x_r1, 1, N, M);
-  //   auto tmp2 = ring_mmul(y_r3, x_r1, 1, N, M);
-  //   auto tmp3 = ring_mmul(iden2, x_r1, 1, N, M);
-  //   ring_add_(tmp1, tmp2);
-  //   ring_add_(tmp1, tmp3);
-  //   ring_add_(grad, tmp1);
-  // }
+  if (comm->getRank() == 1) {
+    auto tmp1 = ring_mmul(ring_mmul(w_r2, x_r1T, 1, M, N), x_r1, K, N, M);
+    auto tmp2 = ring_mmul(y_r3, x_r1, K, N, M);
+    auto tmp3 = ring_mmul(iden2, x_r1, K, N, M);
+
+    for(i = 0; i < K * N; i++){
+      tmp2.at<int32_t>(i) = 4 * tmp2.at<int32_t>(i);
+    }
+    
+    ring_add_(tmp1, tmp2);
+    ring_add_(tmp1, tmp3);
+    ring_add_(grad, tmp1);
+  }
   return grad.as(x.eltype());
 }
 

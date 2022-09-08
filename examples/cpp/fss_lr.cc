@@ -52,7 +52,12 @@ spu::hal::Value train_step(spu::HalContext* ctx, const spu::hal::Value& x,
   auto grad = spu::hal::logreg(ctx, padded_x, w, y);
 
   SPDLOG_DEBUG("[FSS-LR] W = W - grad");
-  auto new_w = spu::hal::sub(ctx, w, grad);
+  auto lr = spu::hal::constant(ctx, 0.0001F);
+  auto msize = spu::hal::constant(ctx, static_cast<float>(y.shape()[0]));
+  auto p1 = spu::hal::mul(ctx, lr, spu::hal::reciprocal(ctx, msize));
+  auto step =
+      spu::hal::mul(ctx, spu::hal::broadcast_to(ctx, p1, grad.shape()), grad);
+  auto new_w = spu::hal::sub(ctx, w, step);
 
   return new_w;
 }

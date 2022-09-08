@@ -60,6 +60,7 @@ Beaver::Triple BeaverTfpUnsafe::Mul(FieldType field, size_t size) {
   auto c = prgCreateArray(field, size, seed_, &counter_, &descs[2]);
 
   if (lctx_->Rank() == 0) {
+     std::cout<<"***********Mul : distribute shares for rank 0**********"<<std::endl;
     c = tp_.adjustMul(descs);
   }
 
@@ -75,6 +76,7 @@ Beaver::Triple BeaverTfpUnsafe::Dot(FieldType field, size_t M, size_t N,
   auto c = prgCreateArray(field, M * N, seed_, &counter_, &descs[2]);
 
   if (lctx_->Rank() == 0) {
+    std::cout<<"***********distribute shares for rank 0**********"<<std::endl;
     c = tp_.adjustDot(descs, M, N, K);
   }
 
@@ -89,6 +91,7 @@ Beaver::Triple BeaverTfpUnsafe::And(FieldType field, size_t size) {
   auto c = prgCreateArray(field, size, seed_, &counter_, &descs[2]);
 
   if (lctx_->Rank() == 0) {
+    std::cout<<"***********And : distribute shares for rank 0**********"<<std::endl;
     c = tp_.adjustAnd(descs);
   }
 
@@ -102,6 +105,7 @@ Beaver::Pair BeaverTfpUnsafe::Trunc(FieldType field, size_t size, size_t bits) {
   auto b = prgCreateArray(field, size, seed_, &counter_, &descs[1]);
 
   if (lctx_->Rank() == 0) {
+    std::cout<<"***********Trunc : distribute shares for rank 0**********"<<std::endl;
     b = tp_.adjustTrunc(descs, bits);
   }
 
@@ -111,6 +115,9 @@ Beaver::Pair BeaverTfpUnsafe::Trunc(FieldType field, size_t size, size_t bits) {
 //lj
 Beaver::Lr_set BeaverTfpUnsafe::lr(FieldType field, size_t M, size_t N, size_t K){
   std::vector<PrgArrayDesc> descs(8);
+
+  // PrgArrayDesc desc1{};
+  // auto a = prgCreateArray(field, size, seed_, &counter_, &desc);
 
   std::cout<<"********beaver_tfp.cc : M, N, K***********"<<std::endl;
   std::cout<<M<<std::endl;
@@ -131,7 +138,7 @@ Beaver::Lr_set BeaverTfpUnsafe::lr(FieldType field, size_t M, size_t N, size_t K
 
   //lj-todo : need to check the correctness of transpose.
 
-  size_t i = 0, index;
+  size_t i = 0, j = 0, index;
   ArrayRef r1_(makeType<RingTy>(field), N * M);
 
 
@@ -147,7 +154,18 @@ Beaver::Lr_set BeaverTfpUnsafe::lr(FieldType field, size_t M, size_t N, size_t K
   std::cout<<"********beaver_tfp.cc : c1 - "<<c1.numel()<<"***********"<<std::endl;
 
   //lj-todo : better representation for c2
+  //0907_lj
   auto c2 = prgCreateArray(field, (M * N) * N, seed_, &counter_, &descs[4]);
+  std::cout<<"********beaver_tfp.cc : c2 initialization - "<<c1.numel()<<"***********"<<std::endl;
+  // ArrayRef c2(makeType<RingTy>(field), (M * N) * N);
+  index = 0;
+  for (i = 0 ; i < M * N; i++) {
+    for (j = 0; j < N; j++) {
+      c2.at<int32_t>(index) = r2.at<int32_t>(j % N) * r1_.at<int32_t>(i / N);
+      index = index + 1;
+    }
+  }
+
 
   std::cout<<"********beaver_tfp.cc : c2 - "<<c2.numel()<<"***********"<<std::endl;
 

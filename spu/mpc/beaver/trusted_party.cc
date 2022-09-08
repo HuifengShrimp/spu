@@ -98,6 +98,7 @@ std::vector<PrgSeed> TrustedParty::getSeeds() const {
 }
 
 ArrayRef TrustedParty::adjustMul(absl::Span<const PrgArrayDesc> descs) {
+  std::cout<<"**********trusted_party : adjustMul***********"<<std::endl;
   YASL_ENFORCE_EQ(descs.size(), 3u);
   checkDescs(descs);
 
@@ -109,12 +110,25 @@ ArrayRef TrustedParty::adjustMul(absl::Span<const PrgArrayDesc> descs) {
 
 ArrayRef TrustedParty::adjustDot(absl::Span<const PrgArrayDesc> descs, size_t M,
                                  size_t N, size_t K) {
+  std::cout<<"**********trusted_party : adjustDot***********"<<std::endl;
   YASL_ENFORCE_EQ(descs.size(), 3u);
   YASL_ENFORCE(descs[0].numel == M * K);
   YASL_ENFORCE(descs[1].numel == K * N);
   YASL_ENFORCE(descs[2].numel == M * N);
 
+  //0907_lj
+  std::cout<<"************adjustDot : M * K, K * N, M * N  **************"<<std::endl;
+  std::cout<< M * K <<std::endl;
+  std::cout<< K * N <<std::endl;
+  std::cout<< M * N <<std::endl;
+
   auto [r0, rs] = reconstruct(RecOp::ADD, getSeeds(), descs);
+
+  //0907_lj
+  std::cout<<"************adjustDot : r0.size(), rs.size()**************"<<std::endl;
+  std::cout<<r0.size()<<std::endl;
+  std::cout<<rs.size()<<std::endl;
+
   // r0[2] += rs[0] dot rs[1] - rs[2];
   ring_add_(r0[2], ring_sub(ring_mmul(rs[0], rs[1], M, N, K), rs[2]));
   return r0[2];
@@ -149,5 +163,10 @@ ArrayRef TrustedParty::adjustRandBit(const PrgArrayDesc& desc) {
   ring_add_(r0[0], ring_sub(ring_randbit(desc.field, desc.numel), rs[0]));
   return r0[0];
 }
+
+//0907_lj
+// ArrayRef TrustedParty::adjustLogReg(const PrgArrayDesc& desc) {
+//   auto 
+// }
 
 }  // namespace spu::mpc
