@@ -16,6 +16,9 @@
 // To run the example, start two terminals:
 // > bazel run //examples/cpp:fss_lr -- --dataset=examples/data/perfect_logit_a.csv --has_label=true
 // > bazel run //examples/cpp:fss_lr -- --dataset=examples/data/perfect_logit_b.csv --rank=1
+// > bazel run //examples/cpp:fss_lr -- --dataset=examples/data/breast_cancer_b.csv --has_label=true
+// > bazel run //examples/cpp:fss_lr -- --dataset=examples/data/breast_cancer_a.csv --rank=1
+
 // clang-format on
 
 #include <fstream>
@@ -35,24 +38,26 @@
 #include "spu/hal/type_cast.h"
 
 spu::hal::Value train_step(spu::HalContext* ctx, const spu::hal::Value& x,
-                           const spu::hal::Value& y, const spu::hal::Value& w) {
+                           const spu::hal::Value& y, const spu::hal::Value& w, size_t iter) {
+    
 
-  // size_t m = 10000;
-  // size_t n = 10;
-  // size_t k =1;      
-
-  
   // Padding x
   auto padding = spu::hal::constant(ctx, 1.0F, {x.shape()[0], 1});
   auto padded_x =
-      spu::hal::concatenate(ctx, {x, spu::hal::p2s(ctx, padding)}, 1);        
-
-  std::cout<<"----------padding x------------"<<std::endl;    
+      spu::hal::concatenate(ctx, {x, spu::hal::p2s(ctx, padding)}, 1);          
 
   auto grad = spu::hal::logreg(ctx, padded_x, w, y);
 
   SPDLOG_DEBUG("[FSS-LR] W = W - grad");
-  auto lr = spu::hal::constant(ctx, 0.0001F);
+  
+  // auto alpha = spu::hal::constant(ctx, 0.0001F);
+  // auto lr_decay = spu::hal::constant(ctx, 1.0F);
+  // auto a = spu::hal::mul(ctx, lr_decay, spu::hal::constant(ctx, (int32_t)iter));
+  // auto b = spu::hal::add(ctx, lr_decay, a);
+  // auto lr = spu::hal::mul(ctx, alpha, spu::hal::reciprocal(ctx, b));
+
+  auto lr = spu::hal::constant(ctx, 0.000001F);
+
   auto msize = spu::hal::constant(ctx, static_cast<float>(y.shape()[0]));
   auto p1 = spu::hal::mul(ctx, lr, spu::hal::reciprocal(ctx, msize));
   auto step =
@@ -82,9 +87,8 @@ spu::hal::Value train(spu::HalContext* ctx, const spu::hal::Value& x,
       const auto y_slice =
           spu::hal::slice(ctx, y, {rows_beg, 0}, {rows_end, y.shape()[1]}, {});
 
-      std::cout<<"----------slice------------"<<std::endl;
 
-      w = train_step(ctx, x_slice, y_slice, w);
+      w = train_step(ctx, x_slice, y_slice, w, iter);
     }
   }
 
@@ -124,7 +128,7 @@ llvm::cl::opt<uint32_t> SkipRows(
 llvm::cl::opt<bool> HasLabel(
     "has_label", llvm::cl::init(false),
     llvm::cl::desc("if true, label is the last column of dataset"));
-llvm::cl::opt<uint32_t> BatchSize("batch_size", llvm::cl::init(21),
+llvm::cl::opt<uint32_t> BatchSize("batch_size", llvm::cl::init(31),
                                   llvm::cl::desc("size of each batch"));
 llvm::cl::opt<uint32_t> NumEpoch("num_epoch", llvm::cl::init(1),
                                  llvm::cl::desc("number of epoch"));
@@ -175,8 +179,14 @@ int main(int argc, char** argv) {
 
   const auto& [x, y] = infeed(hctx.get(), ds, HasLabel.getValue());
 
+  // std::cout<<"*************x&y***************"<<std::endl;
+  // std::cout<<x.numel()<<std::endl;
+  // std::cout<<y.numel()<<std::endl;
+
   const auto w =
       train(hctx.get(), x, y, NumEpoch.getValue(), BatchSize.getValue());
+
+  
 
   const auto scores = inference(hctx.get(), x, w);
 
@@ -188,5 +198,7 @@ int main(int argc, char** argv) {
   auto mse = MSE(revealed_labels, revealed_scores);
   std::cout << "MSE = " << mse << "\n";
 
+  // std::cout<<"************file***********"<<std::endl;
+  // std::cout<<Dataset.getValue()<<std::endl;
   return 0;
 }

@@ -116,82 +116,86 @@ Beaver::Pair BeaverTfpUnsafe::Trunc(FieldType field, size_t size, size_t bits) {
 Beaver::Lr_set BeaverTfpUnsafe::lr(FieldType field, size_t M, size_t N, size_t K){
   std::vector<PrgArrayDesc> descs(8);
 
-  // PrgArrayDesc desc1{};
-  // auto a = prgCreateArray(field, size, seed_, &counter_, &desc);
-
-  std::cout<<"********beaver_tfp.cc : M, N, K***********"<<std::endl;
-  std::cout<<M<<std::endl;
-  std::cout<<N<<std::endl;
-  std::cout<<K<<std::endl;
-
+  //Party 0
   auto r1 = prgCreateArray(field, M * N, seed_, &counter_, &descs[0]);
   auto r2 = prgCreateArray(field, K * N, seed_, &counter_, &descs[1]);
   auto r3 = prgCreateArray(field, M * K, seed_, &counter_, &descs[2]);
-
-  std::cout<<"********beaver_tfp.cc : r1, r2, r3***********"<<std::endl;
-  std::cout<<r1.numel()<<std::endl;
-  std::cout<<r2.numel()<<std::endl;
-  std::cout<<r3.numel()<<std::endl;
-
-  auto c1 = prgCreateArray(field, K * M, seed_, &counter_, &descs[3]);
   
-
-  //lj-todo : need to check the correctness of transpose.
+  //Party 1
+  auto r1_ = ring_rand(field, M * N);
+  auto r2_ = ring_rand(field, K * N);
+  auto r3_ = ring_rand(field, M * K);
 
   size_t i = 0, j = 0, index;
-  ArrayRef r1_(makeType<RingTy>(field), N * M);
-
+  
+  auto c1 = prgCreateArray(field, K * M, seed_, &counter_, &descs[3]);
+  
+  ArrayRef r1T(makeType<RingTy>(field), N * M);
 
   for ( i = 0 ; i < M * N ; i++){
     index = (i % N) * M + (i / N);
-    r1_.at<int32_t>(index) = r1.at<int32_t>(i);
+    r1T.at<int32_t>(index) = r1.at<int32_t>(i);
   }
-  std::cout<<"********beaver_tfp.cc : r1_ - "<<r1_.numel()<<"***********"<<std::endl;
 
+  //Party 0
+  c1 = ring_mmul(r2, r1T, K, M, N);
 
-  //lj-todo : maybe need to reconstruct before using ring_mmul with arrayref.
-  c1 = ring_mmul(r2, r1_, K, M, N);
-  std::cout<<"********beaver_tfp.cc : c1 - "<<c1.numel()<<"***********"<<std::endl;
+  //Party 1
+  auto c1_ = ring_rand(field, K * M);
 
-  //lj-todo : better representation for c2
-  //0907_lj
+  //Party 0
   auto c2 = prgCreateArray(field, (M * N) * N, seed_, &counter_, &descs[4]);
-  std::cout<<"********beaver_tfp.cc : c2 initialization - "<<c1.numel()<<"***********"<<std::endl;
-  // ArrayRef c2(makeType<RingTy>(field), (M * N) * N);
+
   index = 0;
   for (i = 0 ; i < M * N; i++) {
     for (j = 0; j < N; j++) {
-      c2.at<int32_t>(index) = r2.at<int32_t>(j % N) * r1_.at<int32_t>(i / N);
+      c2.at<int32_t>(index) = r2.at<int32_t>(j % N) * r1T.at<int32_t>(i / N);
       index = index + 1;
     }
   }
 
+  //Party 1
+  auto c2_ = ring_rand(field, (M * N) * N);
 
-  std::cout<<"********beaver_tfp.cc : c2 - "<<c2.numel()<<"***********"<<std::endl;
-
-
-  auto c3 = prgCreateArray(field, 1 * N, seed_, &counter_, &descs[5]);
+  //Party 0
+  auto c3 = prgCreateArray(field, K * N, seed_, &counter_, &descs[5]);
 
   c3 = ring_mmul(c1, r1, K, N, M);
-  std::cout<<"********beaver_tfp.cc : c3 - "<<c3.numel()<<"***********"<<std::endl;
 
-  auto c4 = prgCreateArray(field, 1 * N, seed_, &counter_, &descs[6]);
+  //Party 1
+  auto c3_ = ring_rand(field, K * N);
 
+  auto c4 = prgCreateArray(field, K * N, seed_, &counter_, &descs[6]);
+
+  //Party 0
   c4 = ring_mmul(r3, r1, K, N, M);
-  std::cout<<"********beaver_tfp.cc : c4 - "<<c4.numel()<<"***********"<<std::endl;
+
+  //Party 1
+  auto c4_ = ring_rand(field, K * N);
 
   auto c5 =  prgCreateArray(field, N * N, seed_, &counter_, &descs[7]);
 
-  c5 = ring_mmul(r1_, r1, N, N, M);
-  std::cout<<"********beaver_tfp.cc : c5 - "<<c5.numel()<<"***********"<<std::endl;
+  //Party 0
+  c5 = ring_mmul(r1T, r1, N, N, M);
 
+  //Party 1
+  auto c5_ = ring_rand(field, N * N);
 
-  //lj-todo : need to judge the party for respective output
-  // if(lctx_->Rank() == 0){
+  
+  //0916 return respectively
+  if(lctx_->Rank() == 0){
+    ring_sub_(r1, r1_);
+    ring_sub_(r2, r2_);
+    ring_sub_(r3, r3_);
+    ring_sub_(c1, c1_);
+    ring_sub_(c2, c2_);
+    ring_sub_(c3, c3_);
+    ring_sub_(c4, c4_);
+    ring_sub_(c5, c5_);
+    return {r1, r2, r3, c1, c2, c3, c4, c5};
+  }
 
-  // }
-
-  return {r1, r2, r3, c1, c2, c3, c4, c5};
+  return {r1_, r2_, r3_, c1_, c2_, c3_, c4_, c5_} ;
 
 }
 
